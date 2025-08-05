@@ -119,7 +119,16 @@ export async function POST(req: NextRequest) {
     });
     
     // Process all product containers
-    const allProducts: any[] = [];
+    interface ScrapedProductInfo {
+      title: string;
+      price: string;
+      location: string;
+      description: string;
+      imageUrl: string;
+      productUrl: string;
+    }
+
+    const allProducts: ScrapedProductInfo[] = [];
     
     // First, let's log what sections we find
     console.log('Found sections:');
