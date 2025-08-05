@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
-import { Element } from 'cheerio'; 
 
 export const runtime = 'nodejs';
 
@@ -135,7 +134,7 @@ export async function POST(req: NextRequest) {
     const mainContainer = $('.col-md-9.col-sm-9.col-xs-12.search-right-column.view-type-1');
     
     // Filter tiles that are after the target panel and before the next panel
-    const targetTiles: Element[] = [];
+    const targetTiles: cheerio.Element[] = [];
     let inTargetSection = false;
     
     mainContainer.children().each((index, element) => {
