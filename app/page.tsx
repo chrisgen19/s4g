@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import Papa from 'papaparse';
-import ProductListItem from './components/ProductListItem'; // <-- Changed from ProductCard
+import ProductListItem from './components/ProductListItem';
+import Image from 'next/image'; // <-- 1. IMPORT THE IMAGE COMPONENT
 
 interface Product {
   Brand: string;
@@ -22,23 +23,17 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
-  const [fileName, setFileName] = useState(''); // <-- NEW: State for the filename
+  const [fileName, setFileName] = useState('');
 
   const generateDefaultFileName = (scrapeUrl: string) => {
-    // Get current date in MM-DD format
     const now = new Date();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     const dateString = `${month}-${day}`;
-
-    // Try to parse brand and model from URL
     const match = scrapeUrl.match(/brand\/([^/]+)\/([^/]+)/);
     if (match && match[1] && match[2]) {
-      // e.g., jlg-4394rt-08-05
       return `${match[1]}-${match[2]}-${dateString}.csv`;
     }
-
-    // Fallback default name
     return `products-${dateString}.csv`;
   };
 
@@ -47,32 +42,25 @@ export default function Home() {
       setError('Please enter a URL to scrape.');
       return;
     }
-
     setLoading(true);
     setError('');
     setProducts([]);
     setStatus('Connecting to website...');
-
     try {
       setStatus('Scraping product listings... This can take a minute.');
-      
       const response = await fetch('/api/scrape-v2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
-
       const data = await response.json();
-
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Failed to scrape the website.');
       }
-
       setProducts(data.products);
       setStatus('');
-      
       if (data.products.length > 0) {
-        setFileName(generateDefaultFileName(url)); // <-- NEW: Set default filename on success
+        setFileName(generateDefaultFileName(url));
       } else {
         setError('No products found. Please check the URL and make sure it contains a list of items.');
       }
@@ -86,14 +74,11 @@ export default function Home() {
 
   const downloadCSV = () => {
     if (products.length === 0 || !fileName) return;
-
     const csv = Papa.unparse(products);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const blobUrl = URL.createObjectURL(blob);
-    
     link.href = blobUrl;
-    // Use the filename from state, ensuring it ends with .csv
     link.setAttribute('download', fileName.endsWith('.csv') ? fileName : `${fileName}.csv`);
     document.body.appendChild(link);
     link.click();
@@ -105,8 +90,18 @@ export default function Home() {
       <div className="max-w-5xl mx-auto">
         <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 shadow-2xl rounded-xl p-8">
           
+          {/* --- MODIFIED SECTION --- */}
           <div className="mb-10 text-center">
-            <h1 className="text-4xl font-bold text-white mb-2">Machines4U Scraper</h1>
+            <div className="flex justify-center items-center gap-4 mb-2">
+              <Image
+                src="/logo.png" // <-- 2. REFERENCE THE IMAGE FROM THE PUBLIC FOLDER
+                alt="Scrape4Gel Logo"
+                width={50}     // Specify width
+                height={50}    // Specify height
+                className="rounded-md" // Optional styling
+              />
+              <h1 className="text-4xl font-bold text-white">Scrape4Gel</h1>
+            </div>
             <p className="text-gray-400">Enter a Machines4U listing URL to extract product data.</p>
           </div>
 
@@ -122,31 +117,21 @@ export default function Home() {
               </div>
               <button onClick={() => setUrl('https://www.machines4u.com.au/brand/jlg/4394rt/')} className="text-sm text-gray-400 hover:text-indigo-400 mt-2 transition-colors" disabled={loading}>or use a test URL</button>
             </div>
-
             {loading && (<p className="text-center text-blue-400 animate-pulse">{status || 'Processing...'}</p>)}
             {error && (<div className="rounded-md bg-red-900/50 border border-red-500 p-4"><p className="text-sm font-medium text-center text-red-300">{error}</p></div>)}
           </div>
           
-          {/* Results Section - Updated for List View and Filename Input */}
           {!loading && products.length > 0 && (
             <div className="mt-12">
               <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
                 <h2 className="text-2xl font-semibold text-white">Found {products.length} products</h2>
-                {/* NEW: Filename input and Download button group */}
                 <div className="flex rounded-md shadow-sm">
-                   <input
-                    type="text"
-                    value={fileName}
-                    onChange={(e) => setFileName(e.target.value)}
-                    className="flex-1 block w-full rounded-none rounded-l-md bg-gray-700 border-gray-600 text-white focus:ring-green-500 focus:border-green-500 sm:text-sm px-3 py-2"
-                  />
+                   <input type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} className="flex-1 block w-full rounded-none rounded-l-md bg-gray-700 border-gray-600 text-white focus:ring-green-500 focus:border-green-500 sm:text-sm px-3 py-2" />
                   <button onClick={downloadCSV} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-r-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-green-500">
                     Download CSV
                   </button>
                 </div>
               </div>
-
-              {/* The new list container */}
               <div className="space-y-3">
                 {products.map((product, index) => (
                   <ProductListItem key={index} product={product} />
