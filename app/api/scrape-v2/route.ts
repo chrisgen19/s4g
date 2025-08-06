@@ -30,6 +30,32 @@ async function fetchPage(url: string): Promise<string> {
 }
 
 async function scrapeDetailedPage(url: string): Promise<ProductData | null> {
+  
+  // --- NEW HELPER FUNCTION FOR CLEANING PRICE ---
+  const cleanPrice = (priceStr: string): string => {
+    if (!priceStr) return '';
+
+    const lowerCasePrice = priceStr.toLowerCase();
+
+    // Rule 3: Handle "Ask for Price" or similar text
+    if (lowerCasePrice.includes('ask') || !/\d/.test(lowerCasePrice)) {
+      return '';
+    }
+
+    let processedPrice = priceStr;
+
+    // Rule 2: Handle price ranges like "$12,000 - $14,500"
+    if (processedPrice.includes('-')) {
+      const parts = processedPrice.split('-');
+      processedPrice = parts[1] || ''; // Take the part after the hyphen
+    }
+
+    // Rule 1: Remove all non-numeric characters ($, AUD, commas)
+    const finalPrice = processedPrice.replace(/[^0-9]/g, '');
+    
+    return finalPrice;
+  };
+
   try {
     console.log(`  Fetching: ${url}`);
     const html = await fetchPage(url);
@@ -37,41 +63,34 @@ async function scrapeDetailedPage(url: string): Promise<ProductData | null> {
 
     const productName = $('h1.list-title').text().trim() || 'N/A';
     
-    // Fixed price extraction - get only the first price value
-    let price = 'N/A';
+    // Step 1: Extract the raw price text
+    let rawPrice = 'N/A';
     const priceElement = $('span.price_normal b').first();
     if (priceElement.length > 0) {
-      price = priceElement.text().trim();
+      rawPrice = priceElement.text().trim();
     } else {
       const altPriceElement = $('span.price_gstex b').first();
       if (altPriceElement.length > 0) {
-        price = altPriceElement.text().trim();
+        rawPrice = altPriceElement.text().trim();
       } else {
         const containerPrice = $('.price_container').first().text().trim();
-        if (containerPrice) {
-          // Extract just the price part, not labels like "Ex GST"
-          const priceMatch = containerPrice.match(/\$[\d,]+/);
-          price = priceMatch ? priceMatch[0] : containerPrice;
-        }
+        rawPrice = containerPrice || 'N/A';
       }
     }
     
+    // Step 2: Clean the raw price using our new function
+    const finalCleanedPrice = cleanPrice(rawPrice);
+    
     const sellerName = $('.business-name').text().trim() || 'N/A';
 
-    // Location extraction
     let location = 'N/A';
     const locationElement = $('a[onclick="showAdvertMap()"]');
     if (locationElement.length > 0) {
       const fullLocationText = locationElement.text().trim();
       const locationParts = fullLocationText.split(',');
-      if (locationParts.length > 1) {
-        location = locationParts[locationParts.length - 1].trim();
-      } else {
-        location = fullLocationText;
-      }
+      location = locationParts.length > 1 ? locationParts[locationParts.length - 1].trim() : fullLocationText;
     }
 
-    // Extract details
     const details: { [key: string]: string } = {
       'Condition': 'N/A',
       'Make': 'N/A',
@@ -100,7 +119,7 @@ async function scrapeDetailedPage(url: string): Promise<ProductData | null> {
       "Location": location,
       "Seller": sellerName,
       "Year": details.Year,
-      "Price": price,
+      "Price": finalCleanedPrice, // <-- USE THE CLEANED PRICE
       "URL": url,
       "AD Title": productName
     };
@@ -110,6 +129,7 @@ async function scrapeDetailedPage(url: string): Promise<ProductData | null> {
   }
 }
 
+// The main POST function remains the same, no changes needed here.
 export async function POST(req: NextRequest) {
   try {
     const { url } = await req.json();
@@ -120,20 +140,16 @@ export async function POST(req: NextRequest) {
     
     console.log('Starting scrape for:', url);
     
-    // Fetch the main listing page
     const html = await fetchPage(url);
     const $ = cheerio.load(html);
     
-    // Find product URLs using a simpler approach
     const productUrls: string[] = [];
     let foundListingsSection = false;
     let stopCollecting = false;
     
-    // Iterate through all elements in the main container
     $('.col-md-9.col-sm-9.col-xs-12.search-right-column.view-type-1').find('*').each((index, element) => {
       const $el = $(element);
       
-      // Check for section headers
       if ($el.hasClass('search-right-head-panel')) {
         const sectionText = $el.text().trim();
         console.log(`Found section: "${sectionText}"`);
@@ -146,7 +162,6 @@ export async function POST(req: NextRequest) {
         }
       }
       
-      // Collect product links if we're in the right section
       if (foundListingsSection && !stopCollecting && $el.hasClass('equip_link')) {
         const href = $el.attr('href');
         if (href) {
@@ -156,7 +171,6 @@ export async function POST(req: NextRequest) {
       }
     });
     
-    // Remove duplicates
     const uniqueUrls = [...new Set(productUrls)];
     console.log(`Found ${uniqueUrls.length} unique products to scrape`);
     
@@ -168,7 +182,6 @@ export async function POST(req: NextRequest) {
       });
     }
     
-    // Scrape each product
     console.log('Starting detailed scraping...');
     const allData: ProductData[] = [];
     
@@ -179,7 +192,6 @@ export async function POST(req: NextRequest) {
         allData.push(data);
       }
       
-      // Add a small delay to avoid overwhelming the server
       if (i < uniqueUrls.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
