@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Papa from 'papaparse';
 import ProductListItem from './components/ProductListItem';
 import Image from 'next/image';
@@ -22,8 +22,11 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState(''); // This will now be our live status message
   const [fileName, setFileName] = useState('');
+  
+  // Use a ref to hold the EventSource instance
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   const generateDefaultFileName = (scrapeUrl: string) => {
     const now = new Date();
@@ -31,9 +34,7 @@ export default function Home() {
     const day = String(now.getDate()).padStart(2, '0');
     const dateString = `${month}-${day}`;
     const match = scrapeUrl.match(/brand\/([^/]+)\/([^/]+)/);
-    if (match && match[1] && match[2]) {
-      return `${match[1]}-${match[2]}-${dateString}.csv`;
-    }
+    if (match && match[1] && match[2]) return `${match[1]}-${match[2]}-${dateString}.csv`;
     return `products-${dateString}.csv`;
   };
 
@@ -42,35 +43,72 @@ export default function Home() {
       setError('Please enter a URL to scrape.');
       return;
     }
+
+    // Close any existing connection
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    // Reset UI state
     setLoading(true);
     setError('');
     setProducts([]);
-    setStatus('Connecting to website...');
-    try {
-      setStatus('Scraping product listings... This can take a minute.');
-      const response = await fetch('/api/scrape-v2', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to scrape the website.');
-      }
-      setProducts(data.products);
-      setStatus('');
-      if (data.products.length > 0) {
-        setFileName(generateDefaultFileName(url));
-      } else {
-        setError('No products found. Please check the URL and make sure it contains a list of items.');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
-      setStatus('');
-    } finally {
+    setStatus('Initializing connection...');
+    setFileName('');
+
+    // The API is now GET and needs the URL as a query parameter
+    const encodedUrl = encodeURIComponent(url);
+    const eventSource = new EventSource(`/api/scrape-v2?url=${encodedUrl}`);
+    eventSourceRef.current = eventSource;
+
+    eventSource.onopen = () => {
+      setStatus('Connection opened. Starting scrape...');
+    };
+
+    // Listener for status updates
+    eventSource.addEventListener('status', (e) => {
+      const data = JSON.parse(e.data);
+      setStatus(data.message);
+    });
+
+    // Listener for each new product found
+    eventSource.addEventListener('product', (e) => {
+      const newProduct = JSON.parse(e.data);
+      setProducts((prevProducts) => [...prevProducts, newProduct]);
+    });
+
+    // Listener for when the process is done
+    eventSource.addEventListener('done', (e) => {
+      const data = JSON.parse(e.data);
+      setStatus(data.message);
+      setFileName(generateDefaultFileName(url));
       setLoading(false);
-    }
+      eventSource.close();
+    });
+
+    // Listener for errors
+    eventSource.addEventListener('error', (e) => {
+      // EventSource's native error event is generic. We use our custom event for details.
+      if (e.data) {
+          const data = JSON.parse(e.data);
+          setError(data.message);
+      } else {
+          setError('An unknown error occurred with the connection.');
+      }
+      setStatus('Process failed.');
+      setLoading(false);
+      eventSource.close();
+    });
   };
+
+  // Cleanup effect to close the connection when the component unmounts
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
+  }, []);
 
   const downloadCSV = () => {
     if (products.length === 0 || !fileName) return;
@@ -88,7 +126,6 @@ export default function Home() {
   return (
     <main className="min-h-screen py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
-        {/* Changed to a light card style */}
         <div className="bg-white border border-gray-200 shadow-lg rounded-xl p-8">
           
           <div className="mb-10 text-center">
@@ -110,20 +147,30 @@ export default function Home() {
               </div>
               <button onClick={() => setUrl('https://www.machines4u.com.au/brand/jlg/4394rt/')} className="text-sm text-gray-600 hover:text-indigo-600 mt-2 transition-colors" disabled={loading}>or use a test URL</button>
             </div>
-            {loading && (<p className="text-center text-indigo-600">{status || 'Processing...'}</p>)}
+
+            {/* NEW: Live Status/Progress Box */}
+            {loading && (
+              <div className="text-center p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                <p className="text-sm text-indigo-800 font-medium">{status}</p>
+              </div>
+            )}
+            
             {error && (<div className="rounded-md bg-red-50 p-4"><p className="text-sm font-medium text-center text-red-800">{error}</p></div>)}
           </div>
           
-          {!loading && products.length > 0 && (
+          {/* Results section now populates in real-time */}
+          {products.length > 0 && (
             <div className="mt-12">
               <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
                 <h2 className="text-2xl font-semibold text-gray-900">Found {products.length} products</h2>
-                <div className="flex rounded-md shadow-sm">
-                   <input type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} className="flex-1 block w-full rounded-none rounded-l-md border-gray-300 bg-white text-gray-900 focus:ring-green-500 focus:border-green-500 sm:text-sm px-3 py-2" />
-                  <button onClick={downloadCSV} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-r-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                    Download CSV
-                  </button>
-                </div>
+                {!loading && ( // Only show download button when not loading
+                  <div className="flex rounded-md shadow-sm">
+                    <input type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} className="flex-1 block w-full rounded-none rounded-l-md border-gray-300 bg-white text-gray-900 focus:ring-green-500 focus:border-green-500 sm:text-sm px-3 py-2" />
+                    <button onClick={downloadCSV} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-r-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                      Download CSV
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="space-y-3">
                 {products.map((product, index) => (
