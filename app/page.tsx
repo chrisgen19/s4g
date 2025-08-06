@@ -22,16 +22,17 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState('');
-  const [status, setStatus] = useState(''); // This will now be our live status message
+  const [status, setStatus] = useState('');
   const [fileName, setFileName] = useState('');
   
-  // Use a ref to hold the EventSource instance
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const generateDefaultFileName = (scrapeUrl: string) => {
     const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
+    // Using Philippine time (UTC+8) for the date
+    const localDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const month = String(localDate.getMonth() + 1).padStart(2, '0');
+    const day = String(localDate.getDate()).padStart(2, '0');
     const dateString = `${month}-${day}`;
     const match = scrapeUrl.match(/brand\/([^/]+)\/([^/]+)/);
     if (match && match[1] && match[2]) return `${match[1]}-${match[2]}-${dateString}.csv`;
@@ -44,19 +45,16 @@ export default function Home() {
       return;
     }
 
-    // Close any existing connection
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
 
-    // Reset UI state
     setLoading(true);
     setError('');
     setProducts([]);
     setStatus('Initializing connection...');
     setFileName('');
 
-    // The API is now GET and needs the URL as a query parameter
     const encodedUrl = encodeURIComponent(url);
     const eventSource = new EventSource(`/api/scrape-v2?url=${encodedUrl}`);
     eventSourceRef.current = eventSource;
@@ -65,20 +63,19 @@ export default function Home() {
       setStatus('Connection opened. Starting scrape...');
     };
 
-    // Listener for status updates
-    eventSource.addEventListener('status', (e) => {
+    // --- FIX APPLIED TO ALL LISTENERS BELOW ---
+
+    eventSource.addEventListener('status', (e: MessageEvent) => {
       const data = JSON.parse(e.data);
       setStatus(data.message);
     });
 
-    // Listener for each new product found
-    eventSource.addEventListener('product', (e) => {
+    eventSource.addEventListener('product', (e: MessageEvent) => {
       const newProduct = JSON.parse(e.data);
       setProducts((prevProducts) => [...prevProducts, newProduct]);
     });
 
-    // Listener for when the process is done
-    eventSource.addEventListener('done', (e) => {
+    eventSource.addEventListener('done', (e: MessageEvent) => {
       const data = JSON.parse(e.data);
       setStatus(data.message);
       setFileName(generateDefaultFileName(url));
@@ -86,22 +83,20 @@ export default function Home() {
       eventSource.close();
     });
 
-    // Listener for errors
-    eventSource.addEventListener('error', (e) => {
-      // EventSource's native error event is generic. We use our custom event for details.
-      if (e.data) {
-          const data = JSON.parse(e.data);
-          setError(data.message);
-      } else {
-          setError('An unknown error occurred with the connection.');
-      }
-      setStatus('Process failed.');
-      setLoading(false);
-      eventSource.close();
+    // This is the listener that caused the error. Now fixed.
+    eventSource.addEventListener('error', (e: MessageEvent) => {
+        if (e.data) {
+            const data = JSON.parse(e.data);
+            setError(data.message);
+        } else {
+            setError('An unknown error occurred with the connection.');
+        }
+        setStatus('Process failed.');
+        setLoading(false);
+        eventSource.close();
     });
   };
 
-  // Cleanup effect to close the connection when the component unmounts
   useEffect(() => {
     return () => {
       if (eventSourceRef.current) {
@@ -148,7 +143,6 @@ export default function Home() {
               <button onClick={() => setUrl('https://www.machines4u.com.au/brand/jlg/4394rt/')} className="text-sm text-gray-600 hover:text-indigo-600 mt-2 transition-colors" disabled={loading}>or use a test URL</button>
             </div>
 
-            {/* NEW: Live Status/Progress Box */}
             {loading && (
               <div className="text-center p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
                 <p className="text-sm text-indigo-800 font-medium">{status}</p>
@@ -158,12 +152,11 @@ export default function Home() {
             {error && (<div className="rounded-md bg-red-50 p-4"><p className="text-sm font-medium text-center text-red-800">{error}</p></div>)}
           </div>
           
-          {/* Results section now populates in real-time */}
           {products.length > 0 && (
             <div className="mt-12">
               <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
                 <h2 className="text-2xl font-semibold text-gray-900">Found {products.length} products</h2>
-                {!loading && ( // Only show download button when not loading
+                {!loading && (
                   <div className="flex rounded-md shadow-sm">
                     <input type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} className="flex-1 block w-full rounded-none rounded-l-md border-gray-300 bg-white text-gray-900 focus:ring-green-500 focus:border-green-500 sm:text-sm px-3 py-2" />
                     <button onClick={downloadCSV} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-r-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
