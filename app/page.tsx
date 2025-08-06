@@ -125,8 +125,8 @@ export default function Home() {
           
           <div className="mb-10 text-center">
             <div className="flex justify-center items-center gap-4 mb-2">
-              <Image src="/logo.png" alt="Scrape4Gel Logo" width={50} height={50} className="rounded-md" />
-              <h1 className="text-4xl font-bold text-gray-900">Scrape4Gel</h1>
+              <Image src="/logo.png" alt="Scraper4Gel Logo" width={50} height={50} className="rounded-md" />
+              <h1 className="text-4xl font-bold text-gray-900">Scraper4Gel</h1>
             </div>
             <p className="text-gray-600">Enter a Machines4U listing URL to extract product data.</p>
           </div>
