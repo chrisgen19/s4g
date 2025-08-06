@@ -5,8 +5,12 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Scraper4Gel',
+  title: 'Scrape4Gel',
   description: 'Scrape product listings from Machines4U',
+  // --- ADD THIS ICONS OBJECT ---
+  icons: {
+    icon: '/logo.png', // This will set the favicon
+  },
 };
 
 export default function RootLayout({
@@ -16,9 +20,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      {/* THIS IS THE LINE THAT FIXES IT: 
-        We are changing the dark background (bg-gray-900) to a light one (bg-gray-50).
-      */}
       <body className={`${inter.className} bg-gray-50 text-gray-900`}>
         {children}
       </body>
