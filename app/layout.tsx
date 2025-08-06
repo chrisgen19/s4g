@@ -5,7 +5,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Scrape4Gel',
+  title: 'Scraper4Gel',
   description: 'Scrape product listings from Machines4U',
   // --- ADD THIS ICONS OBJECT ---
   icons: {
